@@ -1,0 +1,17 @@
+# depslib dependency file v1.0
+1388929834 source:/home/hyr/Documents/http/hutp/main.cpp
+	<stdio.h>
+
+1390365918 source:/home/hyr/Documents/source/c++/http/hutp/main.cpp
+	<cstdlib>
+	<ctype.h>
+	<iostream>
+	<string>
+	<algorithm>
+	<boost/array.hpp>
+	<boost/bind.hpp>
+	<boost/shared_ptr.hpp>
+	<boost/enable_shared_from_this.hpp>
+	<boost/asio.hpp>
+	<boost/date_time/posix_time/posix_time.hpp>
+
