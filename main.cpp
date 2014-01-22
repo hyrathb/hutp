@@ -15,6 +15,7 @@ class tcp_connection
 {
 public:
     typedef boost::shared_ptr<tcp_connection> pointer;
+    typedef boost::shared_ptr<boost::asio::deadline_timer> ptimer;
 
     static pointer create(boost::asio::io_service& io_service)
     {
@@ -35,7 +36,7 @@ public:
 
 private:
     tcp_connection(boost::asio::io_service& io_service)
-        : socket__(io_service), resolver_(io_service), socket_(io_service), linked_(0), timer(io_service)
+        : socket__(io_service), resolver_(io_service), socket_(io_service), linked_(0)
     {
         memset(req_buf_, 0, sizeof(req_buf_));
         memset(res_buf_, 0, sizeof(res_buf_));
@@ -45,11 +46,11 @@ private:
     {
         if (byte_transferred > 0)
         {
-                if (get_target(url_, port_))
-                {
-                    std::cout << url_ << " " << port_ << std::endl;
-                    boost::asio::ip::tcp::resolver::query query(url_, "http");
-                    resolver_.async_resolve(query, boost::bind(&tcp_connection::handle_resolve, shared_from_this(), boost::asio::placeholders::error, boost::asio::placeholders::iterator));
+            if (get_target(url_, port_))
+            {
+                std::cout << url_ << " " << port_ << std::endl;
+                boost::asio::ip::tcp::resolver::query query(url_, "http");
+                resolver_.async_resolve(query, boost::bind(&tcp_connection::handle_resolve, shared_from_this(), boost::asio::placeholders::error, boost::asio::placeholders::iterator, 0));
 
             }
             else
@@ -63,14 +64,32 @@ private:
 
     }
 
-    void handle_resolve(const boost::system::error_code& ec, boost::asio::ip::tcp::resolver::iterator endpoint_iterator)
+    void handle_resolve(const boost::system::error_code& ec, boost::asio::ip::tcp::resolver::iterator endpoint_iterator, int  recount)
     {
         if (!ec)
         {
-            endpoint_= *endpoint_iterator;
-            endpoint_.port(port_);
-            socket__.close();
-            socket__.async_connect(endpoint_, boost::bind(&tcp_connection::handle_connect, shared_from_this(), boost::asio::placeholders::error));
+            if (!socket__.is_open())
+            {
+                endpoint_= *endpoint_iterator;
+                endpoint_.port(port_);
+                socket__.async_connect(endpoint_, boost::bind(&tcp_connection::handle_connect, shared_from_this(), boost::asio::placeholders::error));
+            }
+            else
+            {
+                if (recount >= 15)
+                {
+                    socket__.close();
+                    endpoint_= *endpoint_iterator;
+                    endpoint_.port(port_);
+                    socket__.async_connect(endpoint_, boost::bind(&tcp_connection::handle_connect, shared_from_this(), boost::asio::placeholders::error));
+                }
+                else
+                {
+                    ptimer timer_(new boost::asio::deadline_timer(resolver_.get_io_service()));
+                    timer_->expires_from_now(boost::posix_time::seconds(1));
+                    timer_->async_wait(boost::bind(&tcp_connection::handle_resolve, shared_from_this(), ec, endpoint_iterator, recount+1));
+                }
+            }
         }
         else
             std::cerr << "Resolve Error:" << boost::system::error_code(ec) << std::endl;
@@ -130,24 +149,6 @@ private:
             }
 
         }
-        tmp=std::strstr(req_buf_, "CONNECT ");
-        if (tmp)
-        {
-            while ((*tmp!= '\n') && (*tmp != '\r') && (*tmp != '\0') && (*tmp != ':'))
-            {
-                tmp++;
-            }
-            if (*tmp==':')
-            {
-                port=0;
-                tmp++;
-                while((*tmp!= ' ') && (*tmp!= '\n') && (*tmp != '\t') && (*tmp != '\r') && (*tmp != '\0') && (*tmp != ':'))
-                {
-                    port =port*10+ *tmp-'0';
-                    ++tmp;
-                }
-            }
-        }
         return url.length();
     }
     void handle_write2()
@@ -163,7 +164,7 @@ private:
     std::string url_;
     char req_buf_[81920];
     char res_buf_[81920];
-    boost::asio::deadline_timer timer;
+    //boost::asio::deadline_timer timer_;
     boost::asio::ip::tcp::endpoint endpoint_;
 
 };
